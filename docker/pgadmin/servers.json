@@ -1,0 +1,13 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "bankapi-postgres",
+      "Group": "Servers",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "bank",
+      "Username": "bank",
+      "SSLMode": "prefer"
+    }
+  }
+}

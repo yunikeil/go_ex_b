@@ -1,0 +1,221 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: bankapi-app
+    env_file:
+      - .env.example
+    environment:
+      DATABASE_URL: postgres://bank:bank@postgres:5432/bank?sslmode=disable
+      SMTP_HOST: hogmail
+      REDIS_ADDR: redis:6379
+      SEED_ENABLED: "true"
+    volumes:
+      - .:/app
+      - go-mod-cache:/go/pkg/mod
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      hogmail:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    networks:
+      - bank
+
+  postgres:
+    image: postgres:latest
+    container_name: bankapi-postgres
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
+    environment:
+      POSTGRES_DB: bank
+      POSTGRES_USER: bank
+      POSTGRES_PASSWORD: bank
+    volumes:
+      - postgres-18-data:/var/lib/postgresql
+      - ./docker/postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bank -d bank"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - bank
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: bankapi-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+      - ./docker/pgadmin/servers.json:/pgadmin4/servers.json:ro
+    ports:
+      - "5050:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - bank
+
+  swagger:
+    image: swaggerapi/swagger-ui:latest
+    container_name: bankapi-swagger
+    environment:
+      SWAGGER_JSON: /openapi/openapi.yaml
+    volumes:
+      - ./docs/openapi.yaml:/openapi/openapi.yaml:ro
+    ports:
+      - "8081:8080"
+    networks:
+      - bank
+
+  hogmail:
+    image: mailhog/mailhog:latest
+    container_name: bankapi-hogmail
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    networks:
+      - bank
+
+  redis:
+    image: redis:alpine
+    container_name: bankapi-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - bank
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: bankapi-postgres-exporter
+    environment:
+      DATA_SOURCE_NAME: postgres://bank:bank@postgres:5432/bank?sslmode=disable
+    ports:
+      - "9187:9187"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - bank
+
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: bankapi-redis-exporter
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    ports:
+      - "9121:9121"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - bank
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: bankapi-prometheus
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=7d"]
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - app
+      - postgres-exporter
+      - redis-exporter
+    networks:
+      - bank
+
+  loki:
+    image: grafana/loki:latest
+    container_name: bankapi-loki
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    volumes:
+      - ./docker/loki/loki-config.yaml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    ports:
+      - "3100:3100"
+    networks:
+      - bank
+
+  promtail:
+    image: grafana/promtail:latest
+    container_name: bankapi-promtail
+    command: ["-config.file=/etc/promtail/config.yml"]
+    volumes:
+      - ./docker/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+    networks:
+      - bank
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: bankapi-jaeger
+    command: ["--query.ui-config=/etc/jaeger/ui-config.json"]
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    volumes:
+      - ./docker/jaeger/ui-config.json:/etc/jaeger/ui-config.json:ro
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+      - "4318:4318"
+    networks:
+      - bank
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: bankapi-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_PLUGINS_PLUGIN_ADMIN_ENABLED: "false"
+      GF_PLUGINS_PLUGIN_ADMIN_EXTERNAL_MANAGE_ENABLED: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - loki
+      - jaeger
+      - prometheus
+    networks:
+      - bank
+
+volumes:
+  postgres-18-data:
+  pgadmin-data:
+  redis-data:
+  loki-data:
+  prometheus-data:
+  grafana-data:
+  go-mod-cache:
+
+networks:
+  bank:
+    driver: bridge

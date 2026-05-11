@@ -1,0 +1,12 @@
+apiVersion: 1
+
+providers:
+  - name: Bank API Dashboards
+    orgId: 1
+    folder: Bank API
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards

@@ -1,0 +1,38 @@
+{
+  "dependencies": {
+    "menuEnabled": true
+  },
+  "monitor": {
+    "menuEnabled": false
+  },
+  "archiveEnabled": false,
+  "tracking": {
+    "gaID": null,
+    "trackErrors": false
+  },
+  "menu": [
+    {
+      "label": "Bank API",
+      "items": [
+        {
+          "label": "Swagger UI",
+          "url": "http://localhost:8081"
+        },
+        {
+          "label": "Grafana",
+          "url": "http://localhost:3000"
+        }
+      ]
+    }
+  ],
+  "linkPatterns": [],
+  "search": {
+    "maxLookback": {
+      "label": "2 Days",
+      "value": "2d"
+    }
+  },
+  "themes": {
+    "enabled": false
+  }
+}
